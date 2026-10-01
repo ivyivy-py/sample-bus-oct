@@ -1,0 +1,6 @@
+{
+  "name": "TransitPulse - Singapore Public Transport Intelligence",
+  "description": "Real-time Singapore civic transit telemetry, live bus arrivals, fleet radar, and transit corridor status powered by LTA DataMall standards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
