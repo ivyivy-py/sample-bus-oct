@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BUS_SERVICES_AT_SOMERSET, BUS_ROUTES } from '../data/transitData';
 import { LiveFleetRadar } from './LiveFleetRadar';
 import { WalkingDirectionsModal } from './WalkingDirectionsModal';
 import { AlertSettingsModal } from './AlertSettingsModal';
 import { useToast } from './Toast';
+import { fetchLtaBusArrivals } from '../services/ltaService';
+import { BusServiceArrivals } from '../types';
 
 interface BusTrackerViewProps {
   selectedBus: string;
@@ -24,11 +26,34 @@ export const BusTrackerView: React.FC<BusTrackerViewProps> = ({
   const [walkingModalOpen, setWalkingModalOpen] = useState(false);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [searchVal, setSearchVal] = useState(selectedBus);
+  const [servicesMap, setServicesMap] = useState<Record<string, BusServiceArrivals>>(BUS_SERVICES_AT_SOMERSET);
+  const [isLtaLive, setIsLtaLive] = useState(false);
 
   // Sync search input with selectedBus
   useEffect(() => {
     setSearchVal(selectedBus);
   }, [selectedBus]);
+
+  // Load LTA data
+  const loadData = useCallback(async () => {
+    try {
+      const result = await fetchLtaBusArrivals('09038', selectedBus);
+      setServicesMap((prev) => ({ ...prev, ...result.services }));
+      setIsLtaLive(result.isLiveData);
+      setSecondsAgo(0);
+    } catch {
+      // Fallback already handled
+    }
+  }, [selectedBus]);
+
+  useEffect(() => {
+    loadData();
+    // 20-second LTA v3 refresh cycle
+    const refreshTimer = setInterval(() => {
+      loadData();
+    }, 20000);
+    return () => clearInterval(refreshTimer);
+  }, [loadData]);
 
   // Telemetry refresh counter
   useEffect(() => {
@@ -38,16 +63,16 @@ export const BusTrackerView: React.FC<BusTrackerViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    setSecondsAgo(0);
+    await loadData();
     setTimeout(() => {
       setIsRefreshing(false);
       showToast(
         lang === 'EN' ? 'Refreshed live telemetry feed' : '已更新实时车队与到站数据',
         'info'
       );
-    }, 500);
+    }, 400);
   };
 
   const handleToggleBookmark = () => {
@@ -82,7 +107,8 @@ export const BusTrackerView: React.FC<BusTrackerViewProps> = ({
     );
   };
 
-  const currentService = BUS_SERVICES_AT_SOMERSET[selectedBus] || BUS_SERVICES_AT_SOMERSET['65'];
+  const currentService =
+    servicesMap[selectedBus] || BUS_SERVICES_AT_SOMERSET[selectedBus] || BUS_SERVICES_AT_SOMERSET['65'];
   const routeInfo = BUS_ROUTES[selectedBus] || BUS_ROUTES['65'];
 
   const quickPicks = ['14', '65', '123', '174', '190'];
@@ -535,7 +561,7 @@ export const BusTrackerView: React.FC<BusTrackerViewProps> = ({
               </div>
 
               {otherServices.map((srvNum) => {
-                const srv = BUS_SERVICES_AT_SOMERSET[srvNum];
+                const srv = servicesMap[srvNum] || BUS_SERVICES_AT_SOMERSET[srvNum];
                 if (!srv) return null;
                 const nextEta = srv.nextBus.etaMinutes;
                 const secondEta = srv.secondBus.etaMinutes;
@@ -654,8 +680,9 @@ export const BusTrackerView: React.FC<BusTrackerViewProps> = ({
                     {t.corridorStatusTitle}
                   </span>
                 </div>
-                <span className="text-xs text-[#5c403f] font-semibold">
-                  {t.corridorDataSource}
+                <span className="text-xs text-[#5c403f] font-semibold flex items-center gap-1">
+                  {isLtaLive && <span className="w-1.5 h-1.5 rounded-full bg-[#0E8345] animate-ping"></span>}
+                  {isLtaLive ? 'LTA DataMall v3 Live' : t.corridorDataSource}
                 </span>
               </div>
 
